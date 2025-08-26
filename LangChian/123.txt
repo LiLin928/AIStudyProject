@@ -1,0 +1,98 @@
+import os
+from dotenv import load_dotenv 
+load_dotenv(override=True)
+
+
+
+! uv add -qU langchain-community langchain-experimental pandas -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+
+
+import numpy as np
+import pandas as pd
+# Load the dataset
+# The dataset is available at https://www.kaggle.com/datasets/blastchar/telco-customer-churn
+dataset = pd.read_csv('WA_Fn-UseC_-Telco-Customer-Churn.csv')
+# Display 5 rows × 21 columns
+pd.set_option('max_colwidth',200)
+dataset.head(5)
+dataset.info()
+
+
+
+import pandas as pd
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_experimental.tools import PythonAstREPLTool
+# Create a tool to execute Python code
+# The tool will have access to the dataset loaded in the local variable `df`
+df = pd.read_csv('WA_Fn-UseC_-Telco-Customer-Churn.csv')
+tool = PythonAstREPLTool(locals={"df": df})
+tool.invoke("df['SeniorCitizen'].mean()")
+df['MonthlyCharges'].mean()
+
+
+
+- 创建LangChain工作流并绑定内置工具
+import os
+from dotenv import load_dotenv 
+load_dotenv(override=True)
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chat_models import init_chat_model
+from langchain_core.output_parsers import StrOutputParser
+
+model  = init_chat_model(model="deepseek-chat", model_provider="deepseek")
+
+llm_with_tools = model.bind_tools([tool])
+
+response = llm_with_tools.invoke(
+    "我有一张表，名为'df'，请帮我计算MonthlyCharges字段的均值。"
+)
+response
+
+
+
+from langchain_core.output_parsers.openai_tools import JsonOutputKeyToolsParser
+
+parser = JsonOutputKeyToolsParser(key_name=tool.name, first_tool_only=True)
+# Bind the parser to the LLM with tools
+llm_chain = llm_with_tools | parser
+# Invoke the chain with a query
+# The response will be a dictionary with the tool's output
+llm_chain.invoke("我有一张表，名为'df'，请帮我计算MonthlyCharges字段的均值。")
+
+
+
+system = f"""
+你可以访问一个名为 `df` 的 pandas 数据框，你可以使用df.head().to_markdown() 查看数据集的基本信息， \
+请根据用户提出的问题，编写 Python 代码来回答。只返回代码，不返回其他内容。只允许使用 pandas 和内置库。
+"""
+prompt = ChatPromptTemplate([
+    ("system", system),
+    ("user", "{question}")
+])
+code_chain = prompt | llm_with_tools | parser
+code_chain.invoke({"question": "请帮我计算MonthlyCharges字段的均值。"})
+chain = prompt | llm_with_tools | parser | tool
+chain.invoke({"question": "请帮我计算MonthlyCharges字段的均值。"})
+
+chain.invoke({"question": "请帮我分析gender、SeniorCitizen和Churn三个字段之间的相关关系。"})
+
+
+
+from langchain_core.runnables import RunnableLambda
+
+def code_print(res):
+    print("即将运行Python代码:", res['query'])
+    return res
+
+print_node = RunnableLambda(code_print)
+
+print_code_chain = prompt | llm_with_tools | parser | print_node | tool
+print_code_chain.invoke({"question": "请帮我计算MonthlyCharges字段的均值。"})
+
+http://localhost:8888/lab?token=f2febf2e57ea399baa9c41abb1800ea4374fe84b9d2147e2
+
+```python
+
